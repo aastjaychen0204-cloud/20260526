@@ -1,0 +1,36 @@
+body, html {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #1a1a1a;
+}
+
+/* Mappa 預設會建立 id 為 mappa-map 的 div */
+#mappa-map {
+  width: 100vw;
+  height: 100vh;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+/* 可以在這裡加入額外的 UI 元件樣式 */
+.info-panel {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  padding: 15px;
+  border-radius: 8px;
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  pointer-events: none;
+  z-index: 1000; /* 確保資訊面板在地圖之上 */
+}
+
+.legend {
+  font-size: 12px;
+  margin-top: 5px;
+}

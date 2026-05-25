@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>臺北市水利處｜雨量站即時監測</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+<style>
+:root{
+  --bg:#FCFDFF;--panel:#F0F5FC;--card:#FFFFFF;--card-h:#E4EDFA;
+  --border:rgba(30,120,210,0.12);--border-h:rgba(30,120,210,0.35);
+  --cyan:#1E78D2;--green:#1EA046;--yellow:#B46E0F;--orange:#C83C3C;
+  --red:#E02020;--purple:#7355D2;--gray:#D9E2E8;
+  --txt:#14233C;--txt2:#46648C;--txt3:#829BB9;
+  --r0:rgba(30,120,210,0.08);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{font-size:13px}
+body{
+  background:var(--bg);color:var(--txt);
+  font-family:'Rajdhani',sans-serif;
+  min-height:100vh;overflow-x:hidden;
+}
+.mono{font-family:'Share Tech Mono',monospace}
+.noto{font-family:'Noto Sans TC',sans-serif}
+
+/* ── 雨滴背景動畫 ─── */
+body::before{
+  content:'';position:fixed;inset:0;
+  background:repeating-linear-gradient(180deg,
+    transparent 0,transparent 98%,
+    rgba(30,120,210,0.05) 98%,rgba(30,120,210,0.05) 100%);
+  background-size:1px 40px;
+  animation:rain-lines 2s linear infinite;pointer-events:none;z-index:0;
+}
+@keyframes rain-lines{from{background-position:0 0}to{background-position:0 40px}}
+#app{position:relative;z-index:1}
+
+/* ── 頁首 ──────────────────────────────────── */
+.hdr{
+  background:linear-gradient(180deg,rgba(255,255,255,0.95) 0,var(--panel) 100%);
+  border-bottom:1px solid var(--border);
+  padding:16px 24px 14px;
+  display:flex;align-items:flex-start;justify-content:space-between;
+  position:sticky;top:0;z-index:100;
+}
+.hdr-left h1{
+  font-family:'Rajdhani',sans-serif;
+  font-size:1.55rem;font-weight:700;letter-spacing:.08em;
+  color:var(--txt);text-transform:uppercase;
+  display:flex;align-items:center;gap:10px;
+}
+.hdr-left h1 .dot{
+  width:8px;height:8px;border-radius:50%;background:var(--cyan);
+  box-shadow:0 0 8px var(--cyan);
+  animation:pulse-dot 2s ease-in-out infinite;
+}
+@keyframes pulse-dot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.7)}}
+.hdr-left p{font-size:.8rem;color:var(--txt2);margin-top:3px;letter-spacing:.04em}
+.hdr-right{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.hdr-right .time{
+  font-family:'Share Tech Mono',monospace;font-size:.88rem;color:var(--cyan);
+}
+.hdr-buttons{display:flex;gap:8px}
+.btn{
+  padding:5px 14px;border-radius:4px;font-size:.8rem;
+  font-family:'Rajdhani',sans-serif;font-weight:600;letter-spacing:.08em;
+  cursor:pointer;border:1px solid;transition:all .15s;text-transform:uppercase;
+}
+.btn-primary{border-color:var(--cyan);color:var(--cyan);background:rgba(0,212,255,.08)}
+.btn-primary:hover{background:rgba(0,212,255,.2)}
+.btn-secondary{border-color:var(--txt3);color:var(--txt2);background:transparent}
+.btn-secondary:hover{border-color:var(--txt2)}
+.auto-badge{
+  display:inline-flex;align-items:center;gap:5px;padding:3px 10px;
+  border:1px solid;border-radius:3px;font-size:.72rem;letter-spacing:.06em;
+  font-family:'Share Tech Mono',monospace;
+}
+.auto-badge.on{border-color:var(--green);color:var(--green);background:rgba(0,255,136,.08)}
+.auto-badge.off{border-color:var(--txt3);color:var(--txt3)}
+
+/* ── 統計列 ─────────────────────────────────── */
+.stats-bar{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+  gap:1px;background:var(--border);border-bottom:1px solid var(--border);
+}
+.stat-item{
+  background:var(--panel);padding:12px 20px;
+  display:flex;flex-direction:column;gap:3px;
+}
+.stat-label{font-size:.68rem;color:var(--txt3);letter-spacing:.1em;text-transform:uppercase}
+.stat-value{
+  font-family:'Share Tech Mono',monospace;font-size:1.4rem;
+  font-weight:400;line-height:1;
+}
+.stat-unit{font-size:.72rem;color:var(--txt2);margin-left:3px}
+.stat-sub{font-size:.7rem;color:var(--txt2)}
+
+/* ── 工具列 ─────────────────────────────────── */
+.toolbar{
+  display:flex;flex-wrap:wrap;align-items:center;gap:10px;
+  padding:12px 24px;border-bottom:1px solid var(--border);background:var(--panel);
+}
+.filter-chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{
+  padding:4px 12px;border-radius:2px;font-size:.75rem;font-weight:600;
+  letter-spacing:.06em;cursor:pointer;border:1px solid var(--border);
+  color:var(--txt2);background:transparent;transition:all .15s;
+  text-transform:uppercase;font-family:'Rajdhani',sans-serif;
+}
+.chip:hover{border-color:rgba(0,212,255,.4);color:var(--txt)}
+.chip.active{border-color:var(--cyan);color:var(--cyan);background:rgba(0,212,255,.1)}
+
+/* ── 地圖模式切換 ── */
+.view-toggle{
+  display:flex;background:var(--gray);padding:3px;border-radius:4px;gap:2px;
+}
+.view-btn{
+  padding:4px 10px;font-size:.7rem;border:none;background:transparent;
+  color:var(--txt3);cursor:pointer;border-radius:2px;font-weight:600;
+  transition:all .2s;
+}
+.view-btn.active{background:var(--card);color:var(--cyan);box-shadow:0 1px 3px rgba(0,0,0,0.1)}
+
+/* ── 地圖容器 ── */
+.map-container{
+  padding:20px;display:flex;justify-content:center;align-items:center;
+  background:var(--panel);min-height:calc(100vh - 300px);position:relative;
+}
+.tp-map-svg{width:100%;max-width:650px;height:auto;filter:drop-shadow(0 10px 20px rgba(0,0,0,0.05))}
+.dist-path{
+  stroke:#fff;stroke-width:1.5;transition:fill .5s ease;cursor:pointer;
+}
+.dist-path:hover{stroke:var(--cyan);stroke-width:2.5;z-index:10}
+.station-dot{
+  stroke:#fff;stroke-width:1;transition:all .3s ease;cursor:pointer;
+}
+.station-dot:hover{stroke:var(--txt);stroke-width:2;r:10}
+.map-legend{
+  position:absolute;bottom:30px;right:30px;background:var(--card);
+  padding:12px;border:1px solid var(--border);border-radius:6px;
+  display:flex;flex-direction:column;gap:8px;
+}
+/* ── 地圖懸浮提示 ── */
+.map-tooltip{
+  position:absolute;pointer-events:none;background:var(--card);
+  border:1px solid var(--cyan);border-radius:4px;padding:8px 12px;
+  box-shadow:0 4px 15px rgba(0,0,0,0.12);z-index:200;min-width:140px;
+  transition: opacity 0.15s;
+}
+.map-tooltip .name{font-weight:700;font-size:.9rem;color:var(--txt);margin-bottom:2px}
+.map-tooltip .dist{font-size:.7rem;color:var(--txt2);margin-bottom:4px}
+.map-tooltip .val{font-family:'Share Tech Mono';font-size:1.25rem;color:var(--cyan);line-height:1}
+.map-tooltip .unit{font-size:.75rem;margin-left:4px;color:var(--txt3)}
+.legend-row{display:flex;align-items:center;gap:8px;font-size:.7rem;color:var(--txt2)}
+.legend-color{width:12px;height:12px;border-radius:2px}
+
+.toolbar-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.sort-select{
+  background:var(--card);border:1px solid var(--border);color:var(--txt2);
+  padding:4px 8px;font-size:.75rem;font-family:'Rajdhani',sans-serif;
+  cursor:pointer;border-radius:2px;
+}
+.sort-select:focus{outline:none;border-color:var(--cyan)}
+.result-count{font-size:.72rem;color:var(--txt3);letter-spacing:.04em}
+
+/* ── 卡片格線 ────────────────────────────────── */
+.grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
+  gap:2px;padding:2px;
+  background:rgba(0,212,255,0.05);
+}
+
+/* ── 站牌卡片 ────────────────────────────────── */
+.station-card{
+  background:var(--card);border:1px solid rgba(30,120,210,0.15);
+  cursor:pointer;transition:all .2s;position:relative;overflow:hidden;
+}
+.station-card:hover{background:var(--card-h);border-color:var(--border-h);}
+.station-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  transition:background .3s;
+}
+.station-card.level-0::before{background:var(--gray)}
+.station-card.level-1::before{background:var(--cyan)}
+.station-card.level-2::before{background:var(--green)}
+.station-card.level-3::before{background:var(--yellow)}
+.station-card.level-4::before{background:var(--orange)}
+.station-card.level-5::before{background:var(--red)}
+
+/* 卡片 — 頂部 */
+.card-top{padding:12px 14px 8px;display:flex;justify-content:space-between;align-items:flex-start}
+.card-name{font-size:1rem;font-weight:700;letter-spacing:.04em;color:var(--txt)}
+.card-district{
+  font-size:.68rem;padding:2px 7px;border-radius:2px;
+  border:1px solid rgba(30,120,210,.25);color:var(--txt2);
+  letter-spacing:.06em;font-family:'Share Tech Mono';
+}
+.card-obs{font-size:.65rem;color:var(--txt3);margin-top:2px;font-family:'Share Tech Mono',monospace}
+
+/* 卡片 — 主雨量顯示 */
+.card-main{padding:6px 14px 10px;border-bottom:1px solid rgba(0,212,255,.08)}
+.card-gauge-label{font-size:.62rem;color:var(--txt3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
+.card-gauge-row{display:flex;align-items:center;gap:8px}
+.gauge-bar-wrap{flex:1;height:6px;background:rgba(20,35,60,0.07);border-radius:1px;overflow:hidden}
+.gauge-bar{height:100%;border-radius:1px;transition:width .8s ease;position:relative}
+.gauge-bar::after{
+  content:'';position:absolute;right:0;top:0;bottom:0;width:3px;
+  background:rgba(255,255,255,.4);border-radius:1px;
+}
+.card-val-big{
+  font-family:'Share Tech Mono',monospace;font-size:1.5rem;line-height:1;
+  min-width:60px;text-align:right;
+}
+.card-val-unit{font-size:.65rem;color:var(--txt2);margin-top:2px;text-align:right}
+
+/* 卡片 — 多時段 */
+.card-periods{display:grid;grid-template-columns:repeat(3,1fr);gap:0}
+.period-cell{
+  padding:6px 10px;border-right:1px solid rgba(0,212,255,.06);
+  border-top:1px solid rgba(0,212,255,.06);
+}
+.period-cell:nth-child(3n){border-right:none}
+.period-label{font-size:.6rem;color:var(--txt3);letter-spacing:.08em;text-transform:uppercase}
+.period-value{
+  font-family:'Share Tech Mono',monospace;font-size:.9rem;
+  margin-top:1px;
+}
+
+/* 告警標籤 */
+.alert-badge{
+  display:inline-block;padding:1px 6px;border-radius:2px;
+  font-size:.62rem;letter-spacing:.08em;font-weight:600;margin-top:4px;
+}
+
+/* ── 載入 / 錯誤狀態 ─────────────────────────── */
+.state-box{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  min-height:400px;gap:16px;padding:40px;
+}
+.loader{
+  width:40px;height:40px;border:2px solid var(--border);
+  border-top-color:var(--cyan);border-radius:50%;
+  animation:spin .8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.state-msg{font-size:.9rem;color:var(--txt2);letter-spacing:.04em}
+.state-sub{font-size:.75rem;color:var(--txt3);text-align:center;line-height:1.8}
+
+/* ── 數量為0的提示 ──────────────────────────── */
+.empty{text-align:center;padding:60px;color:var(--txt3);font-size:.9rem}
+
+/* ── 重新整理倒數 ─────────────────────────────── */
+.countdown{
+  font-family:'Share Tech Mono',monospace;font-size:.72rem;
+  color:var(--txt3);display:flex;align-items:center;gap:6px;
+}
+.cd-bar-wrap{width:80px;height:3px;background:rgba(255,255,255,.1);border-radius:2px}
+.cd-bar{height:100%;border-radius:2px;background:var(--cyan);transition:width .5s linear}
+
+/* ── API 來源標示 ─────────────────────────────── */
+.api-tag{
+  font-size:.65rem;font-family:'Share Tech Mono';padding:2px 8px;
+  border:1px solid;border-radius:2px;letter-spacing:.06em;
+}
+.api-tag.live{border-color:var(--green);color:var(--green)}
+.api-tag.demo{border-color:var(--yellow);color:var(--yellow)}
+
+/* 卡片顏色 */
+.c-cyan{color:var(--cyan)}
+.c-green{color:var(--green)}
+.c-yellow{color:var(--yellow)}
+.c-orange{color:var(--orange)}
+.c-red{color:var(--red)}
+.c-purple{color:var(--purple)}
+.c-gray{color:var(--txt3)}
+
+/* ── 頁尾 ─────────────────────────────────────── */
+.footer{
+  padding:16px 24px;border-top:1px solid var(--border);
+  display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;
+  background:var(--panel);
+}
+.footer p{font-size:.68rem;color:var(--txt3);letter-spacing:.04em;font-family:'Share Tech Mono',monospace}
+.footer a{color:var(--cyan);text-decoration:none}
+
+@media(max-width:640px){
+  .hdr{flex-direction:column;gap:10px}
+  .hdr-right{text-align:left;align-items:flex-start}
+  .toolbar{flex-direction:column;align-items:flex-start}
+  .toolbar-right{margin-left:0}
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- 頁首 -->
+  <header class="hdr">
+    <div class="hdr-left">
+      <h1><span class="dot"></span>臺北市水利處 雨量監測</h1>
+      <p class="noto">Taipei Water Resources Agency — Real-time Rain Gauge Dashboard</p>
+    </div>
+    <div class="hdr-right">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="api-tag" :class="isLive?'live':'demo'">
+          {{ isLive ? '● LIVE API' : '● DEMO DATA' }}
+        </span>
+        <span class="time mono">{{ currentTime }}</span>
+      </div>
+      <div v-if="lastUpdate" class="noto" style="font-size:.72rem;color:var(--txt2)">
+        資料時間：<span class="mono">{{ lastUpdate }}</span>
+      </div>
+      <div class="hdr-buttons">
+        <div class="countdown">
+          <div class="cd-bar-wrap"><div class="cd-bar" :style="{width: countdownPct+'%'}"></div></div>
+          <span>{{ countdownSec }}s</span>
+        </div>
+        <button class="btn btn-secondary" @click="toggleAuto">
+          <span class="auto-badge" :class="autoRefresh?'on':'off'">
+            {{ autoRefresh ? '⏱ AUTO' : '⏸ PAUSE' }}
+          </span>
+        </button>
+        <button class="btn btn-primary" @click="fetchData" :disabled="loading">
+          {{ loading ? '讀取中…' : '⟳ 重新整理' }}
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 載入中 / 錯誤 -->
+  <div v-if="loading" class="state-box">
+    <div class="loader"></div>
+    <div class="state-msg mono">連線臺北市水利處 API…</div>
+    <div class="state-sub noto">
+      https://wic.gov.taipei/OpenData/API/Rain/Get<br>
+      正在解析雨量站即時資料
+    </div>
+  </div>
+
+  <div v-else-if="error && !stations.length" class="state-box">
+    <div style="font-size:2rem">⚠️</div>
+    <div class="state-msg">{{ error }}</div>
+    <div class="state-sub noto">
+      已自動載入示範資料（DEMO），功能完整可操作。<br>
+      若需即時資料，請確認 API 連線與 CORS 設定。
+    </div>
+    <button class="btn btn-primary" @click="fetchData">重新嘗試連線</button>
+  </div>
+
+  <template v-else>
+    <!-- 統計列 -->
+    <div class="stats-bar">
+      <div class="stat-item">
+        <div class="stat-label">監測站總數</div>
+        <div class="stat-value c-cyan mono">{{ stations.length }}<span class="stat-unit">站</span></div>
+        <div class="stat-sub noto">全市{{ districts.length }}個行政區</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">降雨中站數</div>
+        <div class="stat-value mono" :style="{color:rainingCount>0?'var(--yellow)':'var(--txt3)'}">
+          {{ rainingCount }}<span class="stat-unit">站</span>
+        </div>
+        <div class="stat-sub noto">1hr > 0 mm</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">最大1hr雨量</div>
+        <div class="stat-value mono" :class="levelColor(maxStation?.Rain1hr||0)">
+          {{ maxStation ? maxStation.Rain1hr.toFixed(1) : '0.0' }}<span class="stat-unit">mm</span>
+        </div>
+        <div class="stat-sub noto">{{ maxStation?.StationName || '—' }} {{ maxStation?.District || '' }}</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">平均24hr雨量</div>
+        <div class="stat-value mono c-cyan">
+          {{ avg24hr.toFixed(1) }}<span class="stat-unit">mm</span>
+        </div>
+        <div class="stat-sub noto">全站平均</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">最大24hr雨量</div>
+        <div class="stat-value mono" :class="levelColor(max24Station?.Rain24hr||0,'24hr')">
+          {{ max24Station ? max24Station.Rain24hr.toFixed(1) : '0.0' }}<span class="stat-unit">mm</span>
+        </div>
+        <div class="stat-sub noto">{{ max24Station?.StationName || '—' }}</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">警戒站數</div>
+        <div class="stat-value mono" :style="{color:alertCount>0?'var(--red)':'var(--txt3)'}">
+          {{ alertCount }}<span class="stat-unit">站</span>
+        </div>
+        <div class="stat-sub noto">1hr ≥ 10mm (大雨以上)</div>
+      </div>
+    </div>
+
+    <!-- 工具列 -->
+    <div class="toolbar">
+      <div class="filter-chips">
+        <span class="chip" :class="districtFilter==='全部'&&'active'" @click="districtFilter='全部'">全部</span>
+        <span v-for="d in districts" :key="d"
+          class="chip" :class="districtFilter===d&&'active'" @click="districtFilter=d">
+          {{ d.replace('區','') }}
+        </span>
+      </div>
+      <div class="toolbar-right">
+        <div class="view-toggle">
+          <button class="view-btn" :class="viewMode==='grid'&&'active'" @click="viewMode='grid'">網格檢視</button>
+          <button class="view-btn" :class="viewMode==='map'&&'active'" @click="viewMode='map'">地圖模式</button>
+        </div>
+        <span class="result-count mono">顯示 {{ filteredStations.length }} / {{ stations.length }} 站</span>
+        <select class="sort-select" v-model="sortBy">
+          <option value="Rain1hr">依 1hr 雨量排序</option>
+          <option value="Rain10min">依 10min 雨量排序</option>
+          <option value="Rain24hr">依 24hr 雨量排序</option>
+          <option value="StationName">依站名排序</option>
+          <option value="District">依行政區排序</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 地圖模式 -->
+    <div v-if="viewMode === 'map'" class="map-container" @mousemove="trackMouse" @mouseleave="hoverStation = null">
+      <svg viewBox="0 0 800 800" class="tp-map-svg">
+        <!-- 行政區底圖 -->
+        <path v-for="path in mapPaths" :key="path.name"
+          :d="path.d" class="dist-path"
+          :fill="getDistrictColor(path.name)"
+          @mouseenter="hoverDist = path.name"
+          @mouseleave="hoverDist = null" />
+        
+        <!-- 雨量站點圓點 -->
+        <circle v-for="s in filteredStations" :key="s.StationNo"
+          :cx="getMapX(s)" :cy="getMapY(s)" 
+          :r="s.Rain1hr > 0 ? 5 + (s.Rain1hr/5) : 4"
+          class="station-dot"
+          :fill="levelGradientColor(s.Rain1hr)"
+          @mouseenter="hoverStation = s"
+          @mouseleave="hoverStation = null" />
+      </svg>
+      <!-- 懸浮提示方塊 -->
+      <div v-if="hoverStation" class="map-tooltip noto" :style="tooltipStyle">
+        <div class="name">{{ hoverStation.StationName }}</div>
+        <div class="dist">{{ hoverStation.District }}</div>
+        <div class="val">{{ hoverStation.Rain1hr.toFixed(1) }}<span class="unit">mm / hr</span></div>
+        <div style="font-size:.65rem;color:var(--txt3);margin-top:5px">24hr 累積：{{ hoverStation.Rain24hr.toFixed(1) }} mm</div>
+      </div>
+      <div class="map-legend noto">
+        <div class="legend-row" v-for="l in levels.slice(1)" :key="l.label">
+          <div class="legend-color" :style="{background: l.color}"></div>
+          <span>{{ l.label }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 站牌卡片格線 -->
+    <div v-if="viewMode === 'grid' && filteredStations.length" class="grid">
+      <div v-for="s in filteredStations" :key="s.StationNo||s.StationName"
+        class="station-card" :class="'level-'+alertLevel(s.Rain1hr)">
+
+        <!-- 卡頂 -->
+        <div class="card-top">
+          <div>
+            <div class="card-name">{{ s.StationName }}</div>
+            <div class="card-obs mono">{{ s.ObsTime || '—' }}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+            <span class="card-district">{{ s.District }}</span>
+            <span class="alert-badge" :style="alertBadgeStyle(s.Rain1hr)">
+              {{ alertLabel(s.Rain1hr) }}
+            </span>
+          </div>
+        </div>
+
+        <!-- 主雨量（1hr） -->
+        <div class="card-main">
+          <div class="card-gauge-label">1 小時累積雨量</div>
+          <div class="card-gauge-row">
+            <div class="gauge-bar-wrap">
+              <div class="gauge-bar"
+                :style="{width: gaugeWidth(s.Rain1hr, 30)+'%', background: levelGradient(s.Rain1hr)}">
+              </div>
+            </div>
+            <div>
+              <div class="card-val-big" :class="levelColor(s.Rain1hr)">
+                {{ s.Rain1hr.toFixed(1) }}
+              </div>
+              <div class="card-val-unit">mm / hr</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 多時段 -->
+        <div class="card-periods">
+          <div class="period-cell">
+            <div class="period-label">10 min</div>
+            <div class="period-value" :class="s.Rain10min>0?levelColor(s.Rain10min*6):'c-gray'">
+              {{ s.Rain10min.toFixed(1) }}
+              <span style="font-size:.65rem;color:var(--txt3)">mm</span>
+            </div>
+          </div>
+          <div class="period-cell">
+            <div class="period-label">3 hr</div>
+            <div class="period-value" :class="s.Rain3hr>0?'c-cyan':'c-gray'">
+              {{ s.Rain3hr.toFixed(1) }}
+              <span style="font-size:.65rem;color:var(--txt3)">mm</span>
+            </div>
+          </div>
+          <div class="period-cell">
+            <div class="period-label">6 hr</div>
+            <div class="period-value" :class="s.Rain6hr>0?'c-cyan':'c-gray'">
+              {{ s.Rain6hr.toFixed(1) }}
+              <span style="font-size:.65rem;color:var(--txt3)">mm</span>
+            </div>
+          </div>
+          <div class="period-cell" style="border-top:1px solid rgba(0,212,255,.06)">
+            <div class="period-label">12 hr</div>
+            <div class="period-value c-cyan">
+              {{ s.Rain12hr.toFixed(1) }}
+              <span style="font-size:.65rem;color:var(--txt3)">mm</span>
+            </div>
+          </div>
+          <div class="period-cell" style="border-top:1px solid rgba(0,212,255,.06)">
+            <div class="period-label">24 hr</div>
+            <div class="period-value" :class="levelColor(s.Rain24hr,'24hr')">
+              {{ s.Rain24hr.toFixed(1) }}
+              <span style="font-size:.65rem;color:var(--txt3)">mm</span>
+            </div>
+          </div>
+          <div class="period-cell" style="border-top:1px solid rgba(0,212,255,.06)">
+            <div class="period-label">今日</div>
+            <div class="period-value c-cyan">
+              {{ s.RainDay.toFixed(1) }}
+              <span style="font-size:.65rem;color:var(--txt3)">mm</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div v-else class="empty noto">目前篩選條件下無資料</div>
+
+    <!-- 警戒說明列 -->
+    <div style="padding:10px 20px;display:flex;gap:16px;flex-wrap:wrap;border-top:1px solid var(--border);background:var(--panel)">
+      <span style="font-size:.65rem;color:var(--txt3);font-family:'Share Tech Mono';letter-spacing:.06em">1HR 雨量警戒等級：</span>
+      <span v-for="l in levels" :key="l.label"
+        style="display:flex;align-items:center;gap:5px;font-size:.65rem;font-family:'Share Tech Mono'">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:1px" :style="{background:l.color}"></span>
+        <span :style="{color:l.color}">{{ l.label }}</span>
+      </span>
+    </div>
+  </template>
+
+  <!-- 頁尾 -->
+  <footer class="footer">
+    <p>資料來源：<a href="https://wic.gov.taipei" target="_blank">臺北市水利處</a>
+      OpenData API — loginId: open_rain | 每 5 分鐘自動更新</p>
+    <p>API: wic.gov.taipei/OpenData/API/Rain/Get | 雨量單位: mm</p>
+  </footer>
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
+
+// ── 示範資料（API 連線失敗時使用）──────────────────
+function makeDemoData() {
+  const stations = [
+    {StationNo:'C0A9G0',StationName:'貴子坑', District:'北投區',Rain10min:3.5,Rain1hr:18.2,Rain3hr:35.6,Rain6hr:52.1,Rain12hr:78.3,Rain24hr:95.4,RainDay:95.4},
+    {StationNo:'C0A9G1',StationName:'豬母坑', District:'北投區',Rain10min:2.1,Rain1hr:9.8, Rain3hr:22.1,Rain6hr:38.4,Rain12hr:54.2,Rain24hr:67.8,RainDay:67.8},
+    {StationNo:'C0A9G2',StationName:'關渡',   District:'北投區',Rain10min:1.2,Rain1hr:5.4, Rain3hr:12.3,Rain6hr:20.1,Rain12hr:32.5,Rain24hr:44.2,RainDay:44.2},
+    {StationNo:'C0A9G3',StationName:'立農',   District:'北投區',Rain10min:0.5,Rain1hr:2.8, Rain3hr:7.6, Rain6hr:12.4,Rain12hr:18.6,Rain24hr:25.3,RainDay:25.3},
+    {StationNo:'C0A9G4',StationName:'洲美',   District:'北投區',Rain10min:0.8,Rain1hr:4.2, Rain3hr:9.8, Rain6hr:16.2,Rain12hr:24.8,Rain24hr:33.6,RainDay:33.6},
+    {StationNo:'C0A9H0',StationName:'百拉卡', District:'士林區',Rain10min:4.2,Rain1hr:22.6,Rain3hr:45.3,Rain6hr:68.9,Rain12hr:102.4,Rain24hr:128.7,RainDay:128.7},
+    {StationNo:'C0A9H1',StationName:'軍艦岩', District:'士林區',Rain10min:2.8,Rain1hr:14.3,Rain3hr:28.6,Rain6hr:44.2,Rain12hr:62.8,Rain24hr:78.5,RainDay:78.5},
+    {StationNo:'C0A9H2',StationName:'雙溪',   District:'士林區',Rain10min:1.5,Rain1hr:7.8, Rain3hr:18.2,Rain6hr:30.6,Rain12hr:45.3,Rain24hr:58.4,RainDay:58.4},
+    {StationNo:'C0A9H3',StationName:'天母',   District:'士林區',Rain10min:0.3,Rain1hr:1.8, Rain3hr:4.2, Rain6hr:7.8, Rain12hr:12.4,Rain24hr:16.8,RainDay:16.8},
+    {StationNo:'C0A9H4',StationName:'故宮',   District:'士林區',Rain10min:0.6,Rain1hr:3.2, Rain3hr:8.4, Rain6hr:14.6,Rain12hr:22.3,Rain24hr:30.1,RainDay:30.1},
+    {StationNo:'C0A9I0',StationName:'白石湖', District:'內湖區',Rain10min:1.8,Rain1hr:8.6, Rain3hr:19.4,Rain6hr:32.8,Rain12hr:48.6,Rain24hr:62.4,RainDay:62.4},
+    {StationNo:'C0A9I1',StationName:'碧山',   District:'內湖區',Rain10min:2.4,Rain1hr:12.1,Rain3hr:25.8,Rain6hr:42.3,Rain12hr:63.4,Rain24hr:80.2,RainDay:80.2},
+    {StationNo:'C0A9I2',StationName:'大湖',   District:'內湖區',Rain10min:0.9,Rain1hr:4.6, Rain3hr:10.8,Rain6hr:18.4,Rain12hr:27.6,Rain24hr:36.5,RainDay:36.5},
+    {StationNo:'C0A9I3',StationName:'金龍',   District:'內湖區',Rain10min:0.4,Rain1hr:2.1, Rain3hr:5.6, Rain6hr:9.8, Rain12hr:15.2,Rain24hr:20.4,RainDay:20.4},
+    {StationNo:'C0A9J0',StationName:'南港',   District:'南港區',Rain10min:1.1,Rain1hr:5.8, Rain3hr:13.2,Rain6hr:22.6,Rain12hr:34.8,Rain24hr:45.6,RainDay:45.6},
+    {StationNo:'C0A9J1',StationName:'研究院', District:'南港區',Rain10min:0.7,Rain1hr:3.4, Rain3hr:8.2, Rain6hr:14.6,Rain12hr:22.4,Rain24hr:30.8,RainDay:30.8},
+    {StationNo:'C0A9K0',StationName:'四獸山', District:'信義區',Rain10min:0.3,Rain1hr:1.5, Rain3hr:3.8, Rain6hr:6.4, Rain12hr:10.2,Rain24hr:14.5,RainDay:14.5},
+    {StationNo:'C0A9K1',StationName:'福德坑', District:'信義區',Rain10min:0.0,Rain1hr:0.8, Rain3hr:2.1, Rain6hr:3.8, Rain12hr:6.4, Rain24hr:9.2, RainDay:9.2},
+    {StationNo:'C0A9L0',StationName:'木柵',   District:'文山區',Rain10min:1.4,Rain1hr:6.8, Rain3hr:15.4,Rain6hr:26.2,Rain12hr:39.6,Rain24hr:51.8,RainDay:51.8},
+    {StationNo:'C0A9L1',StationName:'貓空',   District:'文山區',Rain10min:3.2,Rain1hr:16.5,Rain3hr:33.2,Rain6hr:52.4,Rain12hr:78.6,Rain24hr:98.2,RainDay:98.2},
+    {StationNo:'C0A9L2',StationName:'深坑',   District:'文山區',Rain10min:0.8,Rain1hr:4.0, Rain3hr:9.6, Rain6hr:16.8,Rain12hr:25.4,Rain24hr:34.2,RainDay:34.2},
+    {StationNo:'C0A9M0',StationName:'大安',   District:'大安區',Rain10min:0.0,Rain1hr:0.4, Rain3hr:1.2, Rain6hr:2.4, Rain12hr:3.8, Rain24hr:5.4, RainDay:5.4},
+    {StationNo:'C0A9M1',StationName:'中正',   District:'中正區',Rain10min:0.0,Rain1hr:0.2, Rain3hr:0.6, Rain6hr:1.2, Rain12hr:2.0, Rain24hr:3.1, RainDay:3.1},
+    {StationNo:'C0A9M2',StationName:'萬華',   District:'萬華區',Rain10min:0.0,Rain1hr:0.0, Rain3hr:0.4, Rain6hr:0.8, Rain12hr:1.4, Rain24hr:2.2, RainDay:2.2},
+    {StationNo:'C0A9M3',StationName:'大同',   District:'大同區',Rain10min:0.0,Rain1hr:0.0, Rain3hr:0.2, Rain6hr:0.6, Rain12hr:1.0, Rain24hr:1.6, RainDay:1.6},
+    {StationNo:'C0A9M4',StationName:'中山',   District:'中山區',Rain10min:0.0,Rain1hr:0.2, Rain3hr:0.4, Rain6hr:0.8, Rain12hr:1.2, Rain24hr:2.0, RainDay:2.0},
+    {StationNo:'C0A9M5',StationName:'松山',   District:'松山區',Rain10min:0.0,Rain1hr:0.4, Rain3hr:0.8, Rain6hr:1.6, Rain12hr:2.4, Rain24hr:3.8, RainDay:3.8},
+  ];
+  const now = new Date();
+  const fmt = d => d.toLocaleString('zh-TW',{hour12:false}).replace(/\//g,'-');
+  return stations.map(s => ({...s, ObsTime: fmt(new Date(now - Math.random()*300000))}));
+}
+
+// ── 解析 API 回傳格式（相容多種結構）──────────────
+function parseResponse(data) {
+  // 可能的格式：陣列、{data:[...]}, {result:{...data...}}, {Data:[...]}
+  let arr = [];
+  if (Array.isArray(data)) arr = data;
+  else if (Array.isArray(data?.data)) arr = data.data;
+  else if (Array.isArray(data?.Data)) arr = data.Data;
+  else if (Array.isArray(data?.result)) arr = data.result;
+  else if (data?.result && typeof data.result === 'object') {
+    // 可能是 {result: {stations: [...]}} 或單一 key
+    const inner = Object.values(data.result).find(v => Array.isArray(v));
+    if (inner) arr = inner;
+  }
+  if (!arr.length) return [];
+
+  return arr.map(s => {
+    // 統一欄位名稱（wic.gov.taipei 可能使用不同大小寫）
+    const get = (...keys) => {
+      for (const k of keys) {
+        if (s[k] !== undefined && s[k] !== null && s[k] !== '') return s[k];
+      }
+      return null;
+    };
+    const toF = v => {
+      const n = parseFloat(v);
+      return isNaN(n) ? 0 : n;
+    };
+    return {
+      StationNo:   get('StationNo','stationNo','SensorId','station_no','站號') || '—',
+      StationName: get('StationName','stationName','Name','name','站名') || '未知',
+      District:    get('District','district','Area','area','行政區','Township') || '—',
+      ObsTime:     get('ObsTime','obsTime','DataTime','RecordTime','observationTime','Time') || '',
+      Rain10min:   toF(get('Rain10min','rain10min','Rainfall10min','R10','r10')),
+      Rain1hr:     toF(get('Rain1hr','rain1hr','Rainfall1hr','R1H','r1h','RainfallHour')),
+      Rain3hr:     toF(get('Rain3hr','rain3hr','Rainfall3hr','R3H','r3h')),
+      Rain6hr:     toF(get('Rain6hr','rain6hr','Rainfall6hr','R6H','r6h')),
+      Rain12hr:    toF(get('Rain12hr','rain12hr','Rainfall12hr','R12H','r12h')),
+      Rain24hr:    toF(get('Rain24hr','rain24hr','Rainfall24hr','R24H','r24h')),
+      RainDay:     toF(get('RainDay','rainDay','RainfallDay','Today','today','RainToday')),
+      Lat:         toF(get('Lat','lat','Latitude','latitude','緯度')),
+      Lon:         toF(get('Lon','lon','Longitude','longitude','經度')),
+    };
+  });
+}
+
+createApp({
+  setup() {
+    const API_URL = 'https://wic.gov.taipei/OpenData/API/Rain/Get?stationNo=&loginId=open_rain&dataKey=85452C1D';
+    const REFRESH_SEC = 300; // 5 分鐘
+
+    const stations      = ref([]);
+    const loading       = ref(false);
+    const error         = ref('');
+    const isLive        = ref(false);
+    const lastUpdate    = ref('');
+    const currentTime   = ref('');
+    const autoRefresh   = ref(true);
+    const viewMode      = ref('grid');
+    const districtFilter= ref('全部');
+    const sortBy        = ref('Rain1hr');
+    const countdownSec  = ref(REFRESH_SEC);
+    const countdownPct  = ref(100);
+    const hoverDist     = ref(null);
+    const hoverStation  = ref(null);
+    const mousePos      = ref({ x: 0, y: 0 });
+
+    // 追蹤滑鼠在地圖容器內的座標
+    const trackMouse = (e) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      mousePos.value = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    };
+
+    // 計算地圖提示框的動態樣式
+    const tooltipStyle = computed(() => ({
+      left: (mousePos.value.x + 15) + 'px',
+      top: (mousePos.value.y + 15) + 'px'
+    }));
+
+    let clockTimer = null, refreshTimer = null, cdTimer = null;
+
+    // ── 時鐘 ──
+    function updateClock() {
+      currentTime.value = new Date().toLocaleTimeString('zh-TW',{hour12:false});
+    }
+
+    // ── 倒數 ──
+    function startCountdown() {
+      clearInterval(cdTimer);
+      countdownSec.value = REFRESH_SEC;
+      countdownPct.value = 100;
+      cdTimer = setInterval(() => {
+        countdownSec.value--;
+        countdownPct.value = (countdownSec.value / REFRESH_SEC) * 100;
+        if (countdownSec.value <= 0 && autoRefresh.value) {
+          fetchData();
+        }
+      }, 1000);
+    }
+
+    function toggleAuto() {
+      autoRefresh.value = !autoRefresh.value;
+      if (autoRefresh.value) startCountdown();
+    }
+
+    // ── 擷取 API ──
+    async function fetchData() {
+      loading.value = true;
+      error.value = '';
+      try {
+        const res = await Promise.race([
+          fetch(API_URL, { headers: {'Accept':'application/json'} }),
+          new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), 8000)),
+        ]);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const raw  = await res.json();
+        const parsed = parseResponse(raw);
+        if (!parsed.length) throw new Error('API 回傳空資料');
+        stations.value = parsed;
+        isLive.value   = true;
+        lastUpdate.value = new Date().toLocaleString('zh-TW',{hour12:false});
+      } catch(e) {
+        console.warn('API 失敗，使用示範資料：', e.message);
+        error.value = `API 連線失敗（${e.message}），顯示示範資料`;
+        if (!stations.value.length) {
+          stations.value = makeDemoData();
+        }
+        isLive.value     = false;
+        lastUpdate.value = new Date().toLocaleString('zh-TW',{hour12:false}) + '（示範）';
+      } finally {
+        loading.value = false;
+        startCountdown();
+      }
+    }
+
+    // ── 計算屬性 ──
+    const districts = computed(() => {
+      const set = new Set(stations.value.map(s => s.District).filter(Boolean));
+      return Array.from(set).sort();
+    });
+    const filteredStations = computed(() => {
+      let arr = stations.value;
+      if (districtFilter.value !== '全部') arr = arr.filter(s => s.District === districtFilter.value);
+      return arr.slice().sort((a, b) => {
+        if (sortBy.value === 'StationName') return a.StationName.localeCompare(b.StationName,'zh');
+        if (sortBy.value === 'District')    return a.District.localeCompare(b.District,'zh');
+        return (b[sortBy.value]||0) - (a[sortBy.value]||0);
+      });
+    });
+    const rainingCount = computed(() => stations.value.filter(s => s.Rain1hr > 0).length);
+    const alertCount   = computed(() => stations.value.filter(s => s.Rain1hr >= 10).length);
+    const maxStation   = computed(() => stations.value.reduce((m,s) => s.Rain1hr > (m?.Rain1hr||0) ? s : m, null));
+    const max24Station = computed(() => stations.value.reduce((m,s) => s.Rain24hr > (m?.Rain24hr||0) ? s : m, null));
+    const avg24hr      = computed(() => {
+      if (!stations.value.length) return 0;
+      return stations.value.reduce((s,st) => s + st.Rain24hr, 0) / stations.value.length;
+    });
+
+    // ── 地圖路徑資料 ──
+    const mapPaths = [
+      { name: '北投區', d: 'M363,22 L405,25 L453,74 L447,156 L397,185 L328,174 L306,128 Z' },
+      { name: '士林區', d: 'M453,74 L550,120 L560,250 L470,270 L447,156 Z' },
+      { name: '內湖區', d: 'M560,250 L710,280 L730,420 L580,430 L520,350 Z' },
+      { name: '南港區', d: 'M730,420 L760,540 L650,620 L580,510 L580,430 Z' },
+      { name: '文山區', d: 'M650,620 L580,780 L380,720 L440,550 L580,510 Z' },
+      { name: '大安區', d: 'M440,550 L460,420 L520,400 L530,520 Z' },
+      { name: '信義區', d: 'M530,520 L520,400 L580,430 L580,510 Z' },
+      { name: '松山區', d: 'M460,340 L520,350 L520,400 L460,420 Z' },
+      { name: '中山區', d: 'M390,260 L470,270 L460,420 L390,400 Z' },
+      { name: '中正區', d: 'M330,420 L390,400 L460,420 L390,560 Z' },
+      { name: '萬華區', d: 'M260,450 L330,420 L390,560 L320,600 Z' },
+      { name: '大同區', d: 'M320,290 L390,260 L390,400 L330,420 Z' }
+    ];
+
+    // ── 地圖座標與顏色映射 ──
+    function getMapX(s) {
+      if (s.Lon > 121) return (s.Lon - 121.44) * 2500;
+      // 建立簡單雜湊值，讓同一行政區的站點均勻散佈
+      const hash = s.StationName.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+      const centroids = { '北投區':360, '士林區':500, '內湖區':630, '南港區':680, '文山區':520, '大安區':480, '信義區':550, '松山區':490, '中山區':420, '中正區':380, '萬華區':310, '大同區':350 };
+      return (centroids[s.District] || 400) + (Math.sin(hash) * 35);
+    }
+    function getMapY(s) {
+      if (s.Lat > 24) return 800 - (s.Lat - 24.95) * 2800;
+      const hash = s.StationName.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+      const centroids = { '北投區':120, '士林區':200, '內湖區':340, '南港區':500, '文山區':650, '大安區':480, '信義區':460, '松山區':380, '中山區':340, '中正區':480, '萬華區':520, '大同區':360 };
+      return (centroids[s.District] || 400) + (Math.cos(hash) * 35);
+    }
+    function getDistrictColor(name) {
+      const distStations = stations.value.filter(s => s.District === name);
+      if (!distStations.length) return 'var(--gray)';
+      const avg = distStations.reduce((acc, s) => acc + s.Rain1hr, 0) / distStations.length;
+      return avg > 0 ? levelGradientColor(avg) : 'var(--panel)';
+    }
+    function levelGradientColor(v) {
+      if (v <= 0) return '#D9E2E8';
+      if (v < 1) return '#1E78D2';
+      if (v < 4) return '#1EA046';
+      if (v < 10) return '#B46E0F';
+      if (v < 20) return '#C83C3C';
+      return '#E02020';
+    }
+
+    // ── 視覺輔助 ──
+    const levels = [
+      {label:'無雨',color:'var(--gray)',th:0},
+      {label:'微雨 <1',color:'var(--cyan)',th:0.1},
+      {label:'小雨 1-4',color:'var(--green)',th:1},
+      {label:'中雨 4-10',color:'var(--yellow)',th:4},
+      {label:'大雨 10-20',color:'var(--orange)',th:10},
+      {label:'豪雨 ≥20',color:'var(--red)',th:20},
+    ];
+
+    function alertLevel(v) {
+      if (v <= 0)   return 0;
+      if (v < 1)    return 1;
+      if (v < 4)    return 2;
+      if (v < 10)   return 3;
+      if (v < 20)   return 4;
+      return 5;
+    }
+    function levelColor(v, mode) {
+      const t = mode==='24hr' ? v/6 : v; // 24hr 換算1hr等效
+      if (t <= 0)   return 'c-gray';
+      if (t < 1)    return 'c-cyan';
+      if (t < 4)    return 'c-green';
+      if (t < 10)   return 'c-yellow';
+      if (t < 20)   return 'c-orange';
+      return 'c-red';
+    }
+    function levelGradient(v) {
+      if (v <= 0)   return 'var(--gray)';
+      if (v < 1)    return 'linear-gradient(90deg,rgba(30,120,210,.6),var(--cyan))';
+      if (v < 4)    return 'linear-gradient(90deg,rgba(30,160,70,.6),var(--green))';
+      if (v < 10)   return 'linear-gradient(90deg,rgba(180,110,15,.6),var(--yellow))';
+      if (v < 20)   return 'linear-gradient(90deg,rgba(200,60,60,.6),var(--orange))';
+      return 'linear-gradient(90deg,rgba(224,32,32,.6),var(--red))';
+    }
+    function alertLabel(v) {
+      if (v <= 0)   return '無雨';
+      if (v < 1)    return '微雨';
+      if (v < 4)    return '小雨';
+      if (v < 10)   return '中雨';
+      if (v < 20)   return '大雨';
+      return '豪雨';
+    }
+    function alertBadgeStyle(v) {
+      const colors = {
+        '無雨':  {border:'var(--gray)',color:'var(--txt3)'},
+        '微雨':  {border:'var(--cyan)',color:'var(--cyan)'},
+        '小雨':  {border:'var(--green)',color:'var(--green)'},
+        '中雨':  {border:'var(--yellow)',color:'var(--yellow)'},
+        '大雨':  {border:'var(--orange)',color:'var(--orange)'},
+        '豪雨':  {border:'var(--red)',color:'var(--red)'},
+      };
+      const c = colors[alertLabel(v)];
+      return `border:1px solid ${c.border};color:${c.color};background:color-mix(in srgb, ${c.color}, transparent 90%)`;
+    }
+    function gaugeWidth(v, max) {
+      return Math.min(v / max * 100, 100);
+    }
+
+    onMounted(() => {
+      updateClock();
+      clockTimer = setInterval(updateClock, 1000);
+      fetchData();
+    });
+    onUnmounted(() => {
+      clearInterval(clockTimer);
+      clearInterval(refreshTimer);
+      clearInterval(cdTimer);
+    });
+
+    return {
+      stations, loading, error, isLive, lastUpdate, currentTime, viewMode,
+      autoRefresh, districtFilter, sortBy, countdownSec, countdownPct, hoverDist, hoverStation,
+      districts, filteredStations, rainingCount, alertCount,
+      maxStation, max24Station, avg24hr, levels, mapPaths, trackMouse, tooltipStyle,
+      fetchData, toggleAuto, getMapX, getMapY, getDistrictColor, levelGradientColor,
+      alertLevel, levelColor, levelGradient, alertLabel, alertBadgeStyle, gaugeWidth,
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
